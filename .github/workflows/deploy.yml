@@ -17,10 +17,8 @@ jobs:
 
       - name: Build and Restart Container
         run: |
-          # Переходим в рабочую директорию (раннер сам создаст её при checkout)
           docker compose up -d --build
           
       - name: Cleanup old images
         run: |
-          # Удаляем зависшие слои, чтобы не забивать SSD на NUC
           docker image prune -f
