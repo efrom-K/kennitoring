@@ -1,6 +1,6 @@
 # Kennitoring
 
-## A High-Performance System & Docker Monitoring Solution for Resource-Constrained Nodes.
+A High-Performance System & Docker Monitoring Solution for Resource-Constrained Nodes.
 
 ---
 
@@ -40,7 +40,7 @@ It was specifically developed to monitor a decentralized home laboratory running
 
 ---
 
-## 🛠 Technology Stack & Environment
+## Technology Stack & Environment
 
 The project is developed and optimized for a specific heterogeneous infrastructure, ensuring stability across various hardware architectures.
 
