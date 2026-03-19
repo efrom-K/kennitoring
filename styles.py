@@ -4,32 +4,27 @@ import config
 def apply_styles():
     st.markdown(f"""
     <style>
-        /* Глобальный шрифт JetBrains Mono */
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
-        
         * {{ font-family: 'JetBrains Mono', monospace !important; }}
-
-        /* Минималистичный фон */
         .stApp {{ background-color: {config.BG_COLOR}; color: {config.TEXT_COLOR}; }}
         
-        /* Сетка контейнеров (2 колонки) */
+        /* Сетка контейнеров */
         .docker-grid {{ 
-            display: grid; grid-template-columns: 1fr 1fr; gap: 8px; 
-            margin-top: 10px; border: 1px solid {config.BORDER_COLOR}; 
-            padding: 10px; border-radius: 4px; background: #0D1117;
+            display: grid; grid-template-columns: 1fr; gap: 5px; 
+            margin-top: 10px;
         }}
         
-        .docker-status {{ 
+        .docker-row {{ 
+            display: flex; justify-content: space-between; align-items: center;
             border: 1px solid {config.BORDER_COLOR}; 
-            padding: 5px 10px; font-size: 0.8rem; background: #0D1117;
+            padding: 4px 12px; font-size: 0.85rem; background: #0D1117;
         }}
         
-        /* Скрываем интерфейс Streamlit */
-        header {{ visibility: hidden; }}
-        footer {{ visibility: hidden; }}
+        .c-name {{ font-weight: bold; color: #888; flex-grow: 1; }}
+        .c-stats {{ color: {config.ACCENT_COLOR}; font-size: 0.75rem; margin-left: 15px; white-space: nowrap; }}
+        .c-port {{ color: #555; font-size: 0.75rem; margin-left: 10px; }}
+
+        header, footer {{ visibility: hidden; }}
         .block-container {{ padding-top: 1rem; }}
-        
-        /* Читаемые метрики */
-        [data-testid="stMetricValue"] {{ font-size: 1.8rem !important; }}
     </style>
     """, unsafe_allow_html=True)
