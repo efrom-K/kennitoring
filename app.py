@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import time
+import datetime
 from collections import deque
 from engine import MonitorEngine
 import styles
@@ -9,77 +10,106 @@ import config
 st.set_page_config(page_title="Kennitoring", layout="wide", initial_sidebar_state="collapsed")
 styles.apply_styles()
 
-# Sidebar & State
-with st.sidebar:
-    st.title("SETTINGS")
-    live_update = st.checkbox('Live Update', value=True)
-    if st.button("Reset History"):
-        st.session_state.history = {'cpu': deque([0]*30, maxlen=30), 'ram': deque([0]*30, maxlen=30)}
-
+# Инициализация
 if 'engine' not in st.session_state:
     st.session_state.engine = MonitorEngine()
-    st.session_state.history = {'cpu': deque([0]*30, maxlen=30), 'ram': deque([0]*30, maxlen=30)}
+    # Храним историю как список словарей с таймстемпом
+    st.session_state.history = {
+        'cpu': deque(maxlen=config.HISTORY_LIMIT),
+        'ram': deque(maxlen=config.HISTORY_LIMIT)
+    }
 
-# Data collection
+# Настройки в сайдбаре
+with st.sidebar:
+    st.title("SETTINGS")
+    live_update = st.checkbox('Enable Live Update', value=True)
+    if st.button("Reset Stats"):
+        st.session_state.history['cpu'].clear()
+        st.session_state.history['ram'].clear()
+        st.rerun()
+
+# Сбор данных
 m = st.session_state.engine.get_system_metrics()
-st.session_state.history['cpu'].append(m['cpu'])
-st.session_state.history['ram'].append(m['ram'])
+now = datetime.datetime.now()
 
-# Header
+# Добавляем данные в историю (Timestamp решает проблему лагов)
+st.session_state.history['cpu'].append({"time": now, "val": m['cpu']})
+st.session_state.history['ram'].append({"time": now, "val": m['ram']})
+
+# Заголовок
 st.title("KENNITORING NODE")
-st.caption(f"HW: INTEL NUC6 J3455 | UPTIME: {m['uptime']}h | LIVE: {'ON' if live_update else 'OFF'}")
+st.caption(f"HW: INTEL NUC6 J3455 | UPTIME: {m['uptime']}H | STATUS: ONLINE")
 st.divider()
 
-col1, col2 = st.columns(2)
+col_left, col_right = st.columns(2)
 
-def draw_perf_chart(data, title, y_label):
-    """Рисует график с фиксированной осью 0-100 как в htop"""
-    df = pd.DataFrame({y_label: list(data)}).reset_index()
+def draw_chart(data, color="#1f77b4"):
+    """Отрисовка графика с привязкой ко времени"""
+    df = pd.DataFrame(list(data))
+    if df.empty: return
+    
     st.vega_lite_chart(df, {
-        'mark': {'type': 'area', 'color': '#1f77b4', 'fillOpacity': 0.3, 'line': {'color': '#1f77b4'}},
+        'mark': {'type': 'area', 'color': color, 'fillOpacity': 0.15, 'line': True},
         'encoding': {
-            'x': {'field': 'index', 'type': 'quantitative', 'axis': None},
-            'y': {'field': y_label, 'type': 'quantitative', 'scale': {'domain': [0, 100]}, 'title': title}
+            'x': {'field': 'time', 'type': 'temporal', 'axis': None},
+            'y': {'field': 'val', 'type': 'quantitative', 'scale': {'domain': [0, 100]}, 'axis': {'grid': False}}
         },
         'config': {'background': 'transparent', 'view': {'stroke': 'transparent'}},
-        'height': 150
+        'height': 140
     }, use_container_width=True)
 
-with col1:
+with col_left:
     st.subheader("Performance")
     
-    # CPU Section
-    c_m1, c_m2 = st.columns([1, 3])
-    c_m1.metric("CPU", f"{m['cpu']}%")
-    with c_m2: draw_perf_chart(st.session_state.history['cpu'], "CPU %", "Load")
+    # CPU & Temp
+    c1, c2, c3 = st.columns([1, 1, 3])
+    c1.metric("CPU", f"{m['cpu']}%")
+    t_color = "normal" if m['temp'] < 65 else "inverse"
+    c2.metric("TEMP", f"{int(m['temp'])}°C", delta_color=t_color)
+    with c3: draw_chart(st.session_state.history['cpu'], color="#FFFFFF")
     
-    # RAM Section
-    r_m1, r_m2 = st.columns([1, 3])
-    r_m1.metric("RAM", f"{m['ram']}%")
-    with r_m2: draw_perf_chart(st.session_state.history['ram'], "RAM %", "Usage")
-    st.caption(f"MEM [ {'|'*int(m['ram']/2)}{'.'*(50-int(m['ram']/2))} ] {m['ram_used']:.2f}G / {m['ram_total']:.2f}G")
+    st.divider()
+    
+    # RAM
+    r1, r2, r3 = st.columns([1, 1, 3])
+    r1.metric("RAM", f"{m['ram']}%")
+    r2.write("") # placeholder
+    with r3: draw_chart(st.session_state.history['ram'], color=config.ACCENT_COLOR)
+    
+    # RAM Bar в стиле htop
+    bar_len = 30
+    filled = int((m['ram'] / 100) * bar_len)
+    bar = "|" * filled + "." * (bar_len - filled)
+    st.caption(f"MEM [ {bar} ] {m['ram_used']:.2f}G / {m['ram_total']:.2f}G")
 
-    st.write("**Network I/O**")
-    net_df = pd.DataFrame([{"NIC": n, "TX": f"{s.bytes_sent/1024**2:.1f}M", "RX": f"{s.bytes_recv/1024**2:.1f}M"} for n, s in m['net'].items()])
-    st.dataframe(net_df, use_container_width=True, hide_index=True)
+    st.write("**Network Activity**")
+    net_data = [{"NIC": n, "TX": f"{s.bytes_sent/1024**2:.1f}MB", "RX": f"{s.bytes_recv/1024**2:.1f}MB"} 
+                for n, s in m['net'].items()]
+    st.dataframe(pd.DataFrame(net_data), use_container_width=True, hide_index=True)
 
-with col2:
+with col_right:
     st.subheader("Infrastructure")
-    for dev, u in m['disks'].items():
+    for dev, usage in m['disks'].items():
         st.write(f"Disk: `{dev}`")
-        st.progress(u.percent / 100)
-        st.caption(f"{u.percent}% | {u.used//1024**3}G / {u.total//1024**3}G")
+        st.progress(usage.percent / 100)
+        st.caption(f"{usage.percent}% | {usage.used//1024**3}GB / {usage.total//1024**3}GB")
 
     st.divider()
+    
     containers = st.session_state.engine.get_containers()
     st.write(f"**Containers ({len(containers)})**")
     
     grid_html = '<div class="docker-grid">'
     for c in containers:
-        status_style = f"color:{config.ACCENT_COLOR}" if c.status == "running" else "color:#666"
-        grid_html += f'<div class="docker-status">{c.name[:18]} | <span style="{status_style}">{c.status}</span></div>'
+        c_color = config.ACCENT_COLOR if c.status == "running" else "#666"
+        grid_html += f'''
+            <div class="docker-status">
+                {c.name[:18]} | <span style="color:{c_color}">{c.status}</span>
+            </div>
+        '''
     st.markdown(grid_html + '</div>', unsafe_allow_html=True)
 
+# Автообновление
 if live_update:
     time.sleep(config.UPDATE_INTERVAL)
     st.rerun()
