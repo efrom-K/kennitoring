@@ -1,11 +1,13 @@
-# Конфигурация системы мониторинга
+# Kennitoring Core Configuration
 UPDATE_INTERVAL = 5  # секунд
-HISTORY_LIMIT = 30   # сколько точек хранить на графиках
+HISTORY_LIMIT = 30   # сколько точек на графиках
 
-# Сетевые настройки
+# Network Filters
 IGNORE_NET_PREFIXES = ('veth', 'br-', 'docker', 'lo', 'sit', 'tun')
 
-# Цветовая схема (Design Code)
-ACCENT_COLOR = "#4CAF50"
-BACKGROUND_COLOR = "#0E1117"
-CARD_BG = "#161B22"
+# High-Contrast Monochrome Palette
+BG_COLOR = "#000000"     # Pure Black
+TEXT_COLOR = "#FFFFFF"   # Pure White
+ACCENT_COLOR = "#00FF00" # Pure Green for Status
+CARD_BG = "#0D1117"      # Very Dark Gray
+BORDER_COLOR = "#30363D" # Thin Border
