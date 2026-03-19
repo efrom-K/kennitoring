@@ -6,6 +6,7 @@ from engine import MonitorEngine
 import styles
 import config
 
+# Указываем layout сразу
 st.set_page_config(page_title="Kennitoring", layout="wide", initial_sidebar_state="collapsed")
 styles.apply_styles()
 
@@ -22,13 +23,15 @@ st.session_state.history['ram'].append(m['ram'])
 
 # Header
 st.title("KENNITORING NODE")
-st.caption(f"UPTIME: {m['uptime']}H | TEMP: {int(m['temp'])}°C")
+# Добавил HW инфо из твоих системных данных (NUC6 J3455)
+st.caption(f"HW: INTEL NUC6 J3455 | UPTIME: {m['uptime']}H | TEMP: {int(m['temp'])}°C")
 st.divider()
 
 col_l, col_r = st.columns([1.2, 1])
 
 def draw_chart(data, title, color="#FFFFFF"):
     df = pd.DataFrame(list(data), columns=['val']).reset_index()
+    # Заменил устаревший use_container_width на width='stretch' согласно логам
     st.vega_lite_chart(df, {
         'mark': {'type': 'area', 'color': color, 'fillOpacity': 0.1, 'line': True},
         'encoding': {
@@ -37,7 +40,7 @@ def draw_chart(data, title, color="#FFFFFF"):
         },
         'config': {'background': 'transparent', 'view': {'stroke': 'transparent'}},
         'height': 150
-    }, use_container_width=True)
+    }, width='stretch')
 
 with col_l:
     st.subheader("Performance")
@@ -55,12 +58,13 @@ with col_l:
 
     st.write("**Network I/O**")
     if m['net']:
-        st.dataframe(pd.DataFrame([{"NIC": n, "TX": f"{s.bytes_sent/1024**2:.1f}M", "RX": f"{s.bytes_recv/1024**2:.1f}M"} for n, s in m['net'].items()]), use_container_width=True, hide_index=True)
+        net_df = pd.DataFrame([{"NIC": n, "TX": f"{s.bytes_sent/1024**2:.1f}M", "RX": f"{s.bytes_recv/1024**2:.1f}M"} for n, s in m['net'].items()])
+        st.dataframe(net_df, width=None, use_container_width=True, hide_index=True)
 
 with col_r:
     st.subheader("Infrastructure")
     for dev, usage in m['disks'].items():
-        st.caption(f"Disk: {dev}")
+        st.caption(f"Disk: {dev} | {usage.percent}% used")
         st.progress(usage.percent / 100)
     
     st.divider()
@@ -68,19 +72,28 @@ with col_r:
     c_list = st.session_state.engine.get_container_details()
     st.write(f"**Containers ({len(c_list)})**")
     
-    html = '<div class="docker-grid">'
+    # Чтобы CSS из styles.py работал корректно, оборачиваем в чистый div
+    # и используем unsafe_allow_html=True для всего блока
+    container_html = '<div class="docker-grid">'
     for c in c_list:
         status_clr = config.ACCENT_COLOR if c['status'] == 'running' else "#555"
-        html += f'''
-        <div class="docker-row">
-            <div class="c-name">{c['name']} <span class="c-port">{c['port']}</span></div>
-            <div class="c-stats">
-                <span style="color:{status_clr}">●</span> {c['cpu']} | {c['ram']}
+        # Убедись, что c['port'] не None, иначе HTML сломается
+        port_info = f":{c['port']}" if c.get('port') else ""
+        
+        container_html += f'''
+        <div class="docker-row" style="margin-bottom: 5px; padding: 5px; border: 1px solid #333; border-radius: 4px;">
+            <div class="c-name" style="font-weight: bold;">{c['name']} <span class="c-port" style="color: #888; font-size: 0.8em;">{port_info}</span></div>
+            <div class="c-stats" style="display: flex; justify-content: space-between;">
+                <span><span style="color:{status_clr}">●</span> {c['status']}</span>
+                <span>{c['cpu']} | {c['ram']}</span>
             </div>
         </div>
         '''
-    st.markdown(html + '</div>', unsafe_allow_html=True)
+    container_html += '</div>'
+    
+    st.markdown(container_html, unsafe_allow_html=True)
 
+# Сайдбар и авто-обновление
 if st.sidebar.checkbox('Live Update', value=True):
     time.sleep(config.UPDATE_INTERVAL)
     st.rerun()
