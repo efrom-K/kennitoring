@@ -19,4 +19,4 @@ COPY . .
 EXPOSE 8050
 
 # Запуск через модуль python для надежности
-CMD ["python", "-m", "streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["python", "-m", "streamlit", "run", "app.py", "--server.port=8050", "--server.address=0.0.0.0"]
