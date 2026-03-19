@@ -1,115 +1,111 @@
 import streamlit as st
 import pandas as pd
 import time
-import datetime
 from collections import deque
 from engine import MonitorEngine
 import styles
 import config
 
+# Настройка страницы
 st.set_page_config(page_title="Kennitoring", layout="wide", initial_sidebar_state="collapsed")
 styles.apply_styles()
 
-# Инициализация
 if 'engine' not in st.session_state:
     st.session_state.engine = MonitorEngine()
-    # Храним историю как список словарей с таймстемпом
+    # Заполняем нулями, чтобы график сразу был "полным" на 30 точек
     st.session_state.history = {
-        'cpu': deque(maxlen=config.HISTORY_LIMIT),
-        'ram': deque(maxlen=config.HISTORY_LIMIT)
+        'cpu': deque([0]*config.HISTORY_LIMIT, maxlen=config.HISTORY_LIMIT),
+        'ram': deque([0]*config.HISTORY_LIMIT, maxlen=config.HISTORY_LIMIT)
     }
 
-# Настройки в сайдбаре
-with st.sidebar:
-    st.title("SETTINGS")
-    live_update = st.checkbox('Enable Live Update', value=True)
-    if st.button("Reset Stats"):
-        st.session_state.history['cpu'].clear()
-        st.session_state.history['ram'].clear()
-        st.rerun()
-
-# Сбор данных
+# Собираем данные
 m = st.session_state.engine.get_system_metrics()
-now = datetime.datetime.now()
+st.session_state.history['cpu'].append(m['cpu'])
+st.session_state.history['ram'].append(m['ram'])
 
-# Добавляем данные в историю (Timestamp решает проблему лагов)
-st.session_state.history['cpu'].append({"time": now, "val": m['cpu']})
-st.session_state.history['ram'].append({"time": now, "val": m['ram']})
-
-# Заголовок
+# Header
 st.title("KENNITORING NODE")
-st.caption(f"HW: INTEL NUC6 J3455 | UPTIME: {m['uptime']}H | STATUS: ONLINE")
+st.caption(f"HW: INTEL NUC6 J3455 | UPTIME: {m['uptime']}H | TEMP: {int(m['temp'])}°C")
 st.divider()
 
-col_left, col_right = st.columns(2)
+col_l, col_r = st.columns(2)
 
-def draw_chart(data, color="#1f77b4"):
-    """Отрисовка графика с привязкой ко времени"""
-    df = pd.DataFrame(list(data))
-    if df.empty: return
+def draw_fixed_chart(data, title, color="#1f77b4"):
+    """График с фиксированным окном, который течет влево"""
+    # Создаем DF с фиксированными индексами 0-29
+    df = pd.DataFrame(list(data), columns=['val']).reset_index()
     
     st.vega_lite_chart(df, {
-        'mark': {'type': 'area', 'color': color, 'fillOpacity': 0.15, 'line': True},
+        'mark': {'type': 'area', 'color': color, 'fillOpacity': 0.1, 'line': {'color': color}},
         'encoding': {
-            'x': {'field': 'time', 'type': 'temporal', 'axis': None},
-            'y': {'field': 'val', 'type': 'quantitative', 'scale': {'domain': [0, 100]}, 'axis': {'grid': False}}
+            'x': {
+                'field': 'index', 
+                'type': 'quantitative', 
+                'axis': None, 
+                # Это заставляет график не сжиматься, а держать масштаб
+                'scale': {'domain': [0, config.HISTORY_LIMIT - 1]} 
+            },
+            'y': {
+                'field': 'val', 
+                'type': 'quantitative', 
+                'scale': {'domain': [0, 100]}, 
+                'title': title,
+                'axis': {'grid': False, 'tickCount': 5}
+            }
         },
         'config': {'background': 'transparent', 'view': {'stroke': 'transparent'}},
-        'height': 140
+        'height': 150
     }, use_container_width=True)
 
-with col_left:
+with col_l:
     st.subheader("Performance")
     
-    # CPU & Temp
-    c1, c2, c3 = st.columns([1, 1, 3])
+    # CPU
+    c1, c2 = st.columns([1, 4])
     c1.metric("CPU", f"{m['cpu']}%")
-    t_color = "normal" if m['temp'] < 65 else "inverse"
-    c2.metric("TEMP", f"{int(m['temp'])}°C", delta_color=t_color)
-    with c3: draw_chart(st.session_state.history['cpu'], color="#FFFFFF")
-    
-    st.divider()
+    with c2: draw_fixed_chart(st.session_state.history['cpu'], "Load %", color="#FFFFFF")
     
     # RAM
-    r1, r2, r3 = st.columns([1, 1, 3])
+    r1, r2 = st.columns([1, 4])
     r1.metric("RAM", f"{m['ram']}%")
-    r2.write("") # placeholder
-    with r3: draw_chart(st.session_state.history['ram'], color=config.ACCENT_COLOR)
+    with r2: draw_fixed_chart(st.session_state.history['ram'], "Usage %", color=config.ACCENT_COLOR)
     
-    # RAM Bar в стиле htop
-    bar_len = 30
+    # htop MEM bar (fix)
+    bar_len = 25
     filled = int((m['ram'] / 100) * bar_len)
     bar = "|" * filled + "." * (bar_len - filled)
     st.caption(f"MEM [ {bar} ] {m['ram_used']:.2f}G / {m['ram_total']:.2f}G")
 
-    st.write("**Network Activity**")
-    net_data = [{"NIC": n, "TX": f"{s.bytes_sent/1024**2:.1f}MB", "RX": f"{s.bytes_recv/1024**2:.1f}MB"} 
-                for n, s in m['net'].items()]
-    st.dataframe(pd.DataFrame(net_data), use_container_width=True, hide_index=True)
-
-with col_right:
+with col_r:
     st.subheader("Infrastructure")
     for dev, usage in m['disks'].items():
         st.write(f"Disk: `{dev}`")
         st.progress(usage.percent / 100)
-        st.caption(f"{usage.percent}% | {usage.used//1024**3}GB / {usage.total//1024**3}GB")
+        st.caption(f"{usage.percent}% | {usage.used//1024**3}G / {usage.total//1024**3}G")
 
     st.divider()
     
+    # ИСПРАВЛЕННЫЙ ВЫВОД КОНТЕЙНЕРОВ
     containers = st.session_state.engine.get_containers()
     st.write(f"**Containers ({len(containers)})**")
     
     grid_html = '<div class="docker-grid">'
     for c in containers:
         c_color = config.ACCENT_COLOR if c.status == "running" else "#666"
-        grid_html += f'''
-            <div class="docker-status">
-                {c.name[:18]} | <span style="color:{c_color}">{c.status}</span>
-            </div>
-        '''
-    st.markdown(grid_html + '</div>', unsafe_allow_html=True)
+        # Собираем строку HTML
+        grid_html += f'<div class="docker-status">{c.name[:18]} | <span style="color:{c_color}">{c.status}</span></div>'
+    grid_html += '</div>'
+    
+    # ВАЖНО: используем markdown с флагом для HTML
+    st.markdown(grid_html, unsafe_allow_html=True)
 
-# Автообновление
+# Sidebar settings
+with st.sidebar:
+    st.title("SETTINGS")
+    live_update = st.checkbox('Live Update', value=True)
+    if st.button("Reset Stats"):
+        st.rerun()
+
 if live_update:
     time.sleep(config.UPDATE_INTERVAL)
     st.rerun()
