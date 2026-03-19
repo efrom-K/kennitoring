@@ -72,25 +72,22 @@ with col_r:
     c_list = st.session_state.engine.get_container_details()
     st.write(f"**Containers ({len(c_list)})**")
     
-    # Чтобы CSS из styles.py работал корректно, оборачиваем в чистый div
-    # и используем unsafe_allow_html=True для всего блока
     container_html = '<div class="docker-grid">'
     for c in c_list:
         status_clr = config.ACCENT_COLOR if c['status'] == 'running' else "#555"
-        # Убедись, что c['port'] не None, иначе HTML сломается
-        port_info = f":{c['port']}" if c.get('port') else ""
+        p_info = f"<span style='color: #888; font-size: 0.8em;'> {c['port']}</span>" if c['port'] else ""
         
-        container_html += f'''
-        <div class="docker-row" style="margin-bottom: 5px; padding: 5px; border: 1px solid #333; border-radius: 4px;">
-            <div class="c-name" style="font-weight: bold;">{c['name']} <span class="c-port" style="color: #888; font-size: 0.8em;">{port_info}</span></div>
-            <div class="c-stats" style="display: flex; justify-content: space-between;">
-                <span><span style="color:{status_clr}">●</span> {c['status']}</span>
-                <span>{c['cpu']} | {c['ram']}</span>
-            </div>
-        </div>
-        '''
+        # Вся карточка в одну строку для надежности рендеринга
+        row = f'<div style="margin-bottom: 8px; padding: 10px; border: 1px solid #333; border-radius: 6px; background: rgba(255,255,255,0.03);">'
+        row += f'<div style="display: flex; justify-content: space-between; align-items: center;">'
+        row += f'<span><b>{c["name"]}</b>{p_info}</span>'
+        row += f'<span style="font-family: monospace;"><span style="color:{status_clr}">●</span> {c["cpu"]} | {c["ram"]}</span>'
+        row += f'</div></div>'
+        container_html += row
+    
     container_html += '</div>'
     
+    # Выводим. Если и так не отрендерит — значит проблема в глобальном CSS в styles.py
     st.markdown(container_html, unsafe_allow_html=True)
 
 # Сайдбар и авто-обновление
