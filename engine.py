@@ -10,65 +10,52 @@ class MonitorEngine:
             self.docker_client = None
 
     def get_system_metrics(self):
-        cpu = psutil.cpu_percent()
-        
-        # Температура
-        temps = psutil.sensors_temperatures()
-        core_temp = 0
-        if 'coretemp' in temps: core_temp = temps['coretemp'][0].current
-        elif 'acpitz' in temps: core_temp = temps['acpitz'][0].current
-        
-        # RAM
+        # Общие системные метрики
         vm = psutil.virtual_memory()
+        temps = psutil.sensors_temperatures()
+        core_temp = temps['coretemp'][0].current if 'coretemp' in temps else 0
         
-        # Uptime & Disks
-        uptime = int((datetime.datetime.now() - datetime.datetime.fromtimestamp(psutil.boot_time())).total_seconds() // 3600)
-        disks = {p.device: psutil.disk_usage(p.mountpoint) for p in psutil.disk_partitions() if 'loop' not in p.device}
-                
-        # Network (Добавили try/except, чтобы интерфейсы не пропадали при ошибке чтения)
         net = {}
         try:
             for nic, stats in psutil.net_io_counters(pernic=True).items():
                 if not nic.startswith(('veth', 'br-', 'docker', 'lo')):
                     net[nic] = stats
         except: pass
-                
+
         return {
-            "cpu": cpu, "temp": core_temp,
-            "ram": vm.percent, "ram_used": vm.used/(1024**3), "ram_total": vm.total/(1024**3),
-            "uptime": uptime, "disks": disks, "net": net
+            "cpu": psutil.cpu_percent(),
+            "temp": core_temp,
+            "ram": vm.percent,
+            "ram_used": vm.used / (1024**3),
+            "ram_total": vm.total / (1024**3),
+            "uptime": int((datetime.datetime.now() - datetime.datetime.fromtimestamp(psutil.boot_time())).total_seconds() // 3600),
+            "disks": {p.device: psutil.disk_usage(p.mountpoint) for p in psutil.disk_partitions() if 'loop' not in p.device},
+            "net": net
         }
 
     def get_container_details(self):
-        """Возвращает детальную инфу по каждому контейнеру"""
         if not self.docker_client: return []
-        containers_data = []
+        details = []
         for c in self.docker_client.containers.list():
             try:
-                # Получаем статистику (stream=False чтобы не вешать поток)
-                stats = c.stats(stream=False)
-                
-                # Считаем CPU %
-                cpu_delta = stats['cpu_stats']['cpu_usage']['total_usage'] - stats['precpu_stats']['cpu_usage']['total_usage']
-                system_delta = stats['cpu_stats']['system_cpu_usage'] - stats['precpu_stats']['system_cpu_usage']
-                cpu_usage = (cpu_delta / system_delta) * 100.0 if system_delta > 0 else 0.0
-                
-                # Считаем RAM (в MB)
-                ram_usage = stats['memory_stats'].get('usage', 0) / (1024**2)
-                
-                # Порты
-                ports = c.attrs['NetworkSettings']['Ports']
-                port_list = []
-                for p in ports:
-                    if ports[p]: port_list.append(ports[p][0]['HostPort'])
-                port_str = f":{','.join(port_list)}" if port_list else ""
+                # Получаем статы (CPU/RAM)
+                s = c.stats(stream=False)
+                cpu_delta = s['cpu_stats']['cpu_usage']['total_usage'] - s['precpu_stats']['cpu_usage']['total_usage']
+                sys_delta = s['cpu_stats']['system_cpu_usage'] - s['precpu_stats']['system_cpu_usage']
+                cpu_pct = (cpu_delta / sys_delta) * 100.0 if sys_delta > 0 else 0
+                ram_mb = s['memory_stats'].get('usage', 0) / (1024**2)
 
-                containers_data.append({
+                # Вытягиваем порты
+                p_map = c.attrs['NetworkSettings']['Ports']
+                ports = [p_map[p][0]['HostPort'] for p in p_map if p_map[p]]
+                port_str = f":{','.join(ports)}" if ports else ""
+
+                details.append({
                     "name": c.name,
                     "status": c.status,
-                    "cpu": f"{cpu_usage:.1f}%",
-                    "ram": f"{int(ram_usage)}M",
+                    "cpu": f"{cpu_pct:.1f}%",
+                    "ram": f"{int(ram_mb)}M",
                     "port": port_str
                 })
             except: continue
-        return sorted(containers_data, key=lambda x: x['name'])
+        return sorted(details, key=lambda x: x['name'])
