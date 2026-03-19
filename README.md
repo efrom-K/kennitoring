@@ -101,7 +101,7 @@ docker run -d \
 
 * **[ ] Alerting:** Telegram/Webhook notifications for resource threshold breaches.
 
-* **[ ] Sensors:** Thermal monitoring for NVMe and CPU packages.
+* **[*] Sensors:** Thermal monitoring for NVMe and CPU packages.
 
 ---
 
