@@ -1,115 +1,80 @@
 import streamlit as st
-import psutil
 import pandas as pd
+import time
 import datetime
-import docker
 from collections import deque
+from engine import MonitorEngine
+import styles
+import config
 
-# Настройки страницы
-st.set_page_config(page_title="NUC Monitor", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Kennitoring Node", layout="wide")
+styles.apply_styles()
 
-# Стили для компактности
-st.markdown("""
-    <style>
-    .block-container {padding-top: 1rem; padding-bottom: 0rem;}
-    .stProgress > div > div > div > div { background-color: #4CAF50; }
-    code { white-space: pre !important; }
-    </style>
-    """, unsafe_allow_html=True)
-
-# Инициализация истории (храним 30 последних замеров)
-if 'history' not in st.session_state:
+# Синглтон движка и истории
+if 'engine' not in st.session_state:
+    st.session_state.engine = MonitorEngine()
     st.session_state.history = {
-        'cpu': deque([0]*30, maxlen=30),
-        'ram': deque([0]*30, maxlen=30),
-        'time': deque([datetime.datetime.now()]*30, maxlen=30)
+        'cpu': deque([0]*config.HISTORY_LIMIT, maxlen=config.HISTORY_LIMIT),
+        'ram': deque([0]*config.HISTORY_LIMIT, maxlen=config.HISTORY_LIMIT)
     }
 
-@st.cache_resource
-def get_docker_client():
-    try:
-        return docker.from_env()
-    except:
-        return None
-
-def get_clean_metrics():
-    # CPU и RAM
-    cpu_val = psutil.cpu_percent()
-    ram_val = psutil.virtual_memory().percent
-    
-    st.session_state.history['cpu'].append(cpu_val)
-    st.session_state.history['ram'].append(ram_val)
-    st.session_state.history['time'].append(datetime.datetime.now())
-
-    # Фильтрация дисков (убираем дубли и loop)
-    disks = {}
-    for p in psutil.disk_partitions():
-        if 'loop' not in p.device and p.device not in disks:
-            try:
-                disks[p.device] = psutil.disk_usage(p.mountpoint)
-            except: continue
-
-    # Фильтрация сети (только физика)
-    net = {}
-    ignore_prefixes = ('veth', 'br-', 'docker', 'lo', 'sit')
-    for nic, stats in psutil.net_io_counters(pernic=True).items():
-        if not nic.startswith(ignore_prefixes) and (stats.bytes_sent > 0 or stats.bytes_recv > 0):
-            net[nic] = stats
-
-    return cpu_val, ram_val, disks, net
-
 # Сбор данных
-cpu_now, ram_now, disks, net = get_clean_metrics()
+metrics = st.session_state.engine.get_system_metrics()
+st.session_state.history['cpu'].append(metrics['cpu'])
+st.session_state.history['ram'].append(metrics['ram'])
 
-# Header
-cols = st.columns([4, 1])
-cols[0].title(f"🏠 NUC6 Node: {psutil.users()[0].name if psutil.users() else 'Server'}")
-cols[1].metric("Uptime", f"{int((datetime.datetime.now() - datetime.datetime.fromtimestamp(psutil.boot_time())).total_seconds() // 3600)}h")
+# HEADER
+head_l, head_r = st.columns([4, 1])
+with head_l:
+    st.title("🛸 Kennitoring Dashboard")
+    st.caption(f"Node Status: Active | Hardware: Intel NUC6 J3455")
+with head_r:
+    st.metric("Uptime", f"{metrics['uptime']} Hours")
 
-left, right = st.columns([1, 1])
+st.divider()
 
-with left:
-    st.subheader("🚀 Performance")
+# ОСНОВНОЙ ВИД
+col_left, col_right = st.columns(2)
+
+with col_left:
+    st.subheader("📊 Live Performance")
     
-    # График CPU
+    # Графики
     cpu_df = pd.DataFrame({'CPU %': list(st.session_state.history['cpu'])})
-    st.line_chart(cpu_df, height=150)
+    st.line_chart(cpu_df, height=200)
     
-    # Сетевая таблица (чистая)
-    st.write("**🌐 Network (MB Overall)**")
-    net_data = []
-    for nic, s in net.items():
-        net_data.append({
-            "Interface": nic,
-            "Sent": f"{s.bytes_sent / (1024**2):.1f} MB",
-            "Recv": f"{s.bytes_recv / (1024**2):.1f} MB"
+    # Сеть
+    st.write("**🌐 Physical Network I/O**")
+    net_list = []
+    for nic, s in metrics['net'].items():
+        net_list.append({
+            "NIC": nic, 
+            "TX (MB)": round(s.bytes_sent/1024**2, 1), 
+            "RX (MB)": round(s.bytes_recv/1024**2, 1)
         })
-    st.table(pd.DataFrame(net_data))
+    st.dataframe(pd.DataFrame(net_list), use_container_width=True, hide_index=True)
 
-with right:
-    st.subheader("💾 Storage & Containers")
+with col_right:
+    st.subheader("💾 Storage & Docker")
     
-    for dev, usage in disks.items():
-        col_name, col_prog, col_val = st.columns([1, 2, 1])
-        col_name.caption(dev)
-        col_prog.progress(usage.percent / 100)
-        col_val.write(f"**{usage.percent}%**")
-    
+    # Диски
+    for dev, usage in metrics['disks'].items():
+        st.write(f"Device: `{dev}`")
+        st.progress(usage.percent / 100)
+        st.caption(f"Used: {usage.used//1024**3}GB / Total: {usage.total//1024**3}GB ({usage.percent}%)")
+
     st.divider()
     
-    # Docker секция
-    client = get_docker_client()
-    if client:
-        st.write(f"**🐳 Containers ({len(client.containers.list())})**")
-        for c in client.containers.list():
-            # Цвет статуса
-            status_color = "green" if c.status == "running" else "red"
-            st.markdown(f" `{c.name[:18]:<18}` : {status_color}[{c.status}]")
-    else:
-        st.error("Docker Socket Error")
+    # Контейнеры
+    containers = st.session_state.engine.get_containers()
+    st.write(f"**🐳 Active Containers ({len(containers)})**")
+    for c in containers:
+        color = "green" if c.status == "running" else "gray"
+        st.markdown(f"""<div class="docker-status">
+            <span style="color:{color}">●</span> {c.name[:20]} — <i>{c.status}</i>
+        </div>""", unsafe_allow_html=True)
 
-# Умное обновление через фрагменты (Streamlit 1.33+)
-if st.checkbox('Live Update (5s)', value=True):
-    import time
-    time.sleep(5)
+# AUTO-REFRESH
+if st.sidebar.checkbox('Enable Live Update', value=True):
+    time.sleep(config.UPDATE_INTERVAL)
     st.rerun()
