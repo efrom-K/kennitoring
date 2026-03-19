@@ -4,17 +4,16 @@ services:
     container_name: kennitoring
     restart: always
     privileged: true 
-    network_mode: "host"
+    network_mode: "host"  # Приложение будет доступно на порту 8050 твоего NUC автоматически
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /sys:/sys:ro
-      - /proc:/proc:ro
+      - /proc:/host/proc:ro  # Лучше маппить в подпапку, чтобы не конфликтовать с внутренним /proc
+      - /etc/os-release:/etc/os-release:ro
     environment:
-      - PROCFS_PATH=/proc
+      - PROCFS_PATH=/host/proc # Указываем psutil, где искать настоящие данные хоста
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
-    ports:
-      - "8050:8501"
