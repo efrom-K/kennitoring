@@ -10,6 +10,8 @@ Kennitoring is a lightweight, real-time monitoring dashboard designed for edge i
 
 It was specifically developed to monitor a decentralized home laboratory running high-load services like Wireguard, Xray, and Samba on low-power Intel Celeron/Pentium hardware.
 
+![Kennitoring Interface](assets/kennitoring_ui.png)
+
 ---
 
 ## Key Technical Features
