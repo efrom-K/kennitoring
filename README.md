@@ -1,110 +1,93 @@
-# Kennitoring
+# 🛡️ Kennitoring
 
-A High-Performance System & Docker Monitoring Solution for Resource-Constrained Nodes.
+**Ultra-lightweight, real-time System & Docker monitoring for resource-constrained edge nodes.**
+
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Streamlit](https://img.shields.io/badge/UI-Streamlit-FF4B4B.svg)](https://streamlit.io/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
 
-## Overview
+## 🚀 The Vision
 
-Kennitoring is a lightweight, real-time monitoring dashboard designed for edge infrastructure and home laboratories (e.g., Intel NUC, Raspberry Pi). Unlike heavy monitoring stacks (Prometheus/Grafana), Kennitoring operates with a near-zero footprint, providing essential telemetry without exhausting system resources.
+Most monitoring stacks (Prometheus + Grafana + Exporters) consume more resources than the microservices they are supposed to monitor. **Kennitoring** solves this paradox. 
 
-It was specifically developed to monitor a decentralized home laboratory running high-load services like Wireguard, Xray, and Samba on low-power Intel Celeron/Pentium hardware.
+Designed for **HomeLabs, Edge Infrastructure, and SBCs** (Intel NUC, Raspberry Pi, Orange Pi), it provides a "Single Pane of Glass" view into your hardware with a near-zero footprint. It was born to monitor decentralized nodes running high-load services like **Wireguard, Xray, and Samba** on low-power Intel Celeron/Pentium silicon.
+
+### ⚡ Performance Benchmarks (Intel® J3455 / 4GB RAM):
+* **CPU Usage:** < 3%
+* **RAM Footprint:** ~150 MB
+* **Disk I/O:** Zero (No persistent DB overhead)
+
+---
+
+## ✨ Key Technical Features
+
+* **🔍 Smart Interface Filtering:** Automatically excludes ephemeral Docker bridges (`br-*`), virtual Ethernet pairs (`veth*`), and loopbacks. Focus only on physical NICs and active VPN tunnels.
+* **🐳 Docker Engine Native:** Deep integration via `docker-py`. Monitor container health, resource pressure, and orchestration status in real-time.
+* **📊 Volatile Telemetry History:** Implements `st.session_state` with `collections.deque` for rolling time-series data without the weight of an external database.
+* **🛠️ Hardware-Agnostic Storage:** Intelligent deduplication of mount points by physical device ID. Accurate reporting for complex partition layouts.
+* **🎨 High Information Density:** Custom CSS-injected Streamlit UI optimized for "Couch Monitoring" on 32" screens or tablets.
 
 ![Kennitoring Interface](assets/kennitoring_ui.png)
 
 ---
 
-## Key Technical Features
+## 🛠️ Technology Stack
 
-* **Smart Interface Filtering:** Automatically excludes ephemeral Docker bridge interfaces (br-*), virtual Ethernet pairs (veth*), and loopback devices to focus on physical (NIC) and tunnel (VPN) throughput.
-
-* **Volatile Telemetry History:** Implements st.session_state with collections.deque to maintain a rolling history of CPU and RAM utilization without persistent database overhead.
-
-* **Docker Engine Integration:** Communicates directly with the Docker socket via docker-py to provide real-time container status and orchestration insights.
-
-* **Resource Optimization:** Uses @st.cache_resource for singleton Docker client instances to prevent socket exhaustion on low-memory systems.
-
-* **Hardware-Agnostic Storage Tracking:** Deduplicates mount points by physical device ID, ensuring accurate reporting for complex partition layouts.
+| Layer | Technology |
+| :--- | :--- |
+| **Language** | Python 3.10+ |
+| **UI Framework** | Streamlit (High-density Dashboard) |
+| **System Telemetry** | `psutil` (Low-level system utilities) |
+| **Orchestration** | `docker-py` (Docker Engine SDK) |
+| **Data Handling** | `pandas` & `collections.deque` |
 
 ---
 
-## Infrastructure Architecture
+## 📦 Deployment
 
-### The dashboard is designed to run as a standalone service or within a container, providing a unified view of: ###
-
-* **Host Performance:** Global and per-core CPU load, Memory pressure.
-
-* **Network Topology:** Real-time I/O tracking for physical and overlay networks (e.g., Wireguard).
-
-* **Storage Health:** Disk usage metrics for physical volumes, excluding loopback/snap devices.
-
-* **Container Management:** Live status of the local Docker microservices stack.
-
----
-
-## Technology Stack & Environment
-
-The project is developed and optimized for a specific heterogeneous infrastructure, ensuring stability across various hardware architectures.
-
-### Software Stack
-* **Language:** Python 3.10+
-* **UI Framework:** Streamlit (Custom CSS injection for dense information density)
-* **System Telemetry:** `psutil` (Low-level process and system utilities)
-* **Container Orchestration:** `docker-py` (Docker Engine API SDK)
-* **Data Handling:** `pandas` & `collections.deque` for time-series simulation
-
-### Reference Hardware (Production Environment)
-The system is actively maintained and tested on the following nodes:
-* **CPU:** Intel® Celeron j3455.
-* **RAM:** 4GB DDR3
-* **Disk:** HDD Toshiba 1TB
-The system demonstrated good performance on this stack. CPU usage was 2-5%, RAM usage was 150 MB.
-
----
-
-## Installation & Deployment
-
-### Prerequisites
-*Python 3.10 or higher*
-*Docker Engine with accessible /var/run/docker.sock*
-
-## Setup:
-
-```bash
-# Clone the repository
-git clone https://github.com/your-username/kennitoring.git
-cd kennitoring
-
-# Install core dependencies
-pip install -r requirements.txt
-
-# Launch the monitoring engine
-streamlit run monitor.py --server.port 8501 --server.address 0.0.0.0
-
-```
-
-## Docker Deployment (Recommended):
+### The "One-Liner" (Docker)
+The recommended way to deploy Kennitoring. Just mount the socket and go:
 
 ```bash
 docker run -d \
   --name kennitoring \
   --restart unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  -p 8501:8501 \
+  -p 8050:8050 \
   efimr/kennitoring:latest
-
 ```
+### Manual Installation
 
+```bash
+# Clone the repository
+git clone [https://github.com/efrom-K/kennitoring.git](https://github.com/efrom-K/kennitoring.git)
+cd kennitoring
+
+# Install core dependencies
+pip install -r requirements.txt
+
+# Launch the engine
+streamlit run monitor.py
+```
 ---
 
-## Roadmap:
+## 🗺️ Roadmap
 
 * **[ ] Container Control:** Integration of Start/Stop/Restart triggers via UI.
-
-* **[ ] Alerting:** Telegram/Webhook notifications for resource threshold breaches.
-
-* **[*] Sensors:** Thermal monitoring for NVMe and CPU packages.
+* **[ ] Alerting Engine:** Telegram & Webhook notifications for resource threshold breaches.
+* **[✅] Thermal Insights:** Real-time monitoring for NVMe and CPU package temperatures.
+* **[ ] Multi-node View:** Ability to aggregate telemetry from multiple Kennitoring agents.
 
 ---
 
-*Author: Efim Romanchenko – Software Engineer & Researcher.*
+## 👨‍💻 Author
+Efim Romanchenko – *Infrastructure Engineer & AI Researcher*
+* **LinkedIn:** https://www.linkedin.com/in/efim-romanchenko/
+* **Projects:** Focused on high-performance networking and AI-driven diagnostics (VetAI).
+
+---
+
+*Give a ⭐️ if this project helped your HomeLab stay lean and cool!*
